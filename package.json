@@ -1,0 +1,29 @@
+{
+  "name": "campaign-viz",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "format": "prettier --cache --write .",
+    "format:check": "prettier --cache --check .",
+    "transform": "tsx scripts/transform-export.ts"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^25.2.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.2",
+    "tailwindcss": "^4.1.18",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "leaflet": "^1.9.4"
+  }
+}

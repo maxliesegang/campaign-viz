@@ -1,0 +1,42 @@
+[
+  {
+    "date": "2025-01-15",
+    "type": "doors",
+    "lat": 49.0069,
+    "lng": 8.4037,
+    "count": 12,
+    "_comment": "Example: 12 doors knocked in Innenstadt-West"
+  },
+  {
+    "date": "2025-01-15",
+    "type": "flyers",
+    "lat": 49.0089,
+    "lng": 8.4127,
+    "count": 50,
+    "_comment": "Example: 50 flyers distributed in Innenstadt-Ost"
+  },
+  {
+    "date": "2025-01-16",
+    "type": "plakate",
+    "lat": 49.0109,
+    "lng": 8.3937,
+    "count": 5,
+    "_comment": "Example: 5 posters placed in Mühlburg"
+  },
+  {
+    "date": "2025-01-18",
+    "type": "doors",
+    "lat": 48.9989,
+    "lng": 8.4737,
+    "count": 18,
+    "_comment": "Example: 18 doors knocked in Durlach"
+  },
+  {
+    "date": "2025-01-20",
+    "type": "flyers",
+    "lat": 49.0449,
+    "lng": 8.3637,
+    "count": 75,
+    "_comment": "Example: 75 flyers distributed in Neureut"
+  }
+]
