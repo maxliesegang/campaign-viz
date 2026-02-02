@@ -104,6 +104,16 @@ export function renderTemplate(): string {
           <button id="cem-toggle" class="cem-btn" type="button" aria-pressed="false">
             Cem Modus
           </button>
+          <button
+            id="marker-style-toggle"
+            class="marker-style-btn"
+            type="button"
+            aria-pressed="false"
+            title="Sunflower Marker umschalten"
+            aria-label="Sunflower Marker umschalten"
+          >
+            🌻
+          </button>
           <button id="btn-fullscreen" class="icon-btn" title="Vollbild" aria-label="Vollbild umschalten">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />

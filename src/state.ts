@@ -9,6 +9,7 @@ export interface AppState {
   playbackSpeed: number
   isFullscreen: boolean
   cemMode: boolean
+  useSunflowerMarkers: boolean
   animationFrameId: number | null
   lastFrameTime: number
   activityFilter: ActivityFilter
@@ -22,6 +23,7 @@ const state: AppState = {
   playbackSpeed: 1,
   isFullscreen: false,
   cemMode: false,
+  useSunflowerMarkers: true,
   animationFrameId: null,
   lastFrameTime: 0,
   activityFilter: 'ALL',

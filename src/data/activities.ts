@@ -80,18 +80,11 @@ function generateSampleActivities(): Activity[] {
       const latOffset = (seededRandom(activityId * 13 + i * 2) - 0.5) * 0.015
       const lngOffset = (seededRandom(activityId * 17 + i * 3) - 0.5) * 0.015
 
-      const typeRoll = seededRandom(activityId * 19 + i * 5)
-      const type: ActivityType = typeRoll < 0.7 ? 'HOUSE' : 'POSTER'
-
-      let count: number
-      switch (type) {
-        case 'HOUSE':
-          count = Math.floor(seededRandom(activityId * 23 + i * 7) * 25) + 8
-          break
-        case 'POSTER':
-          count = Math.floor(seededRandom(activityId * 31 + i * 13) * 8) + 2
-          break
-      }
+      const type: ActivityType = seededRandom(activityId * 19 + i * 5) < 0.7 ? 'HOUSE' : 'POSTER'
+      const count =
+        type === 'HOUSE'
+          ? Math.floor(seededRandom(activityId * 23 + i * 7) * 25) + 8
+          : Math.floor(seededRandom(activityId * 31 + i * 13) * 8) + 2
 
       activities.push({
         date: dateStr,
@@ -147,30 +140,19 @@ function processActivities(
   })
 }
 
-// Load any JSON files placed in src/data/activity-files/*.json
-const importedActivityModules = import.meta.glob('./activity-files/*.json', {
-  eager: true,
-})
-
-const importedActivities: Activity[] = Object.values(importedActivityModules).flatMap((mod) => {
+// Load JSON files from src/data/activity-files/*.json, fallback to generated sample data
+const importedModules = import.meta.glob('./activity-files/*.json', { eager: true })
+const importedActivities: Activity[] = Object.values(importedModules).flatMap((mod) => {
   const data = (mod as { default?: Activity[] }).default
   return Array.isArray(data) ? data : []
 })
 
-const hasImportedData = importedActivities.length > 0
-const sampleActivities: Activity[] = hasImportedData
-  ? importedActivities
-  : generateSampleActivities()
+const activities = importedActivities.length > 0 ? importedActivities : generateSampleActivities()
+const dateRange = computeDateRange(activities)
 
-const dateRange = computeDateRange(sampleActivities)
+// Skip coordinate blurring - imported data should be pre-processed, generated data is already randomized
+export const processedActivities = processActivities(activities, true, dateRange.start)
 
-export const processedActivities: ProcessedActivity[] = processActivities(
-  sampleActivities,
-  true, // imported JSON should already be blurred; generated sample is blurred below anyway
-  dateRange.start,
-)
-
-// Compute date range from actual data
 export function getDateRange(): { start: Date; end: Date } {
   return { start: new Date(dateRange.start), end: new Date(dateRange.end) }
 }
@@ -204,19 +186,10 @@ export function filterActivities(
   return activities.filter((activity) => activity.type === filter)
 }
 
-type VisibilityState = {
-  currentDate: Date
-  dayOffset: number
-  activityFilter: ActivityFilter
-}
-
-/**
- * Returns activities that are both visible on the current dayOffset and pass the activity filter.
- */
 export function selectVisibleActivities(
   activities: ProcessedActivity[],
-  state: VisibilityState,
+  state: { currentDate: Date; dayOffset: number; activityFilter: ActivityFilter },
 ): ProcessedActivity[] {
-  const visibleByDate = getVisibleActivitiesUpTo(activities, state.currentDate, state.dayOffset)
-  return filterActivities(visibleByDate, state.activityFilter)
+  const visible = getVisibleActivitiesUpTo(activities, state.currentDate, state.dayOffset)
+  return filterActivities(visible, state.activityFilter)
 }

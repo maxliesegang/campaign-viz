@@ -18,6 +18,7 @@ type TimelineUi = {
   timeline: HTMLElement
   overlay: HTMLElement
   cemToggle: HTMLElement
+  markerStyleToggle: HTMLElement
 }
 
 let activities: ProcessedActivity[] = []
@@ -42,6 +43,7 @@ function collectTimelineUi(): TimelineUi {
     timeline: getElement('timeline-container'),
     overlay: getElement('final-overlay'),
     cemToggle: getElement('cem-toggle'),
+    markerStyleToggle: getElement('marker-style-toggle'),
   }
 }
 
@@ -58,6 +60,7 @@ function setupTimelineListeners(): void {
   wireSpeedSelect()
   wireActivityFilter()
   wireCemToggle()
+  wireMarkerStyleToggle()
 
   setupKeyboardShortcuts()
 }
@@ -91,23 +94,39 @@ function wireActivityFilter(): void {
   })
 }
 
-function wireCemToggle(): void {
-  const btn = document.getElementById('cem-toggle')
-  if (!btn) return
-
-  const sync = () => {
-    const { cemMode } = getState()
-    btn.setAttribute('aria-pressed', cemMode ? 'true' : 'false')
-  }
-
+function wireToggleButton(
+  btn: HTMLElement,
+  getActive: () => boolean,
+  onToggle: (active: boolean) => void,
+): void {
+  const sync = () => btn.setAttribute('aria-pressed', String(getActive()))
   btn.addEventListener('click', () => {
-    const next = !getState().cemMode
-    updateState({ cemMode: next })
-    if (!next) resetFaceCelebration()
+    onToggle(!getActive())
     sync()
   })
-
   sync()
+}
+
+function wireCemToggle(): void {
+  wireToggleButton(
+    requireTimelineUi().cemToggle,
+    () => getState().cemMode,
+    (active) => {
+      updateState({ cemMode: active })
+      if (!active) resetFaceCelebration()
+    },
+  )
+}
+
+function wireMarkerStyleToggle(): void {
+  wireToggleButton(
+    requireTimelineUi().markerStyleToggle,
+    () => getState().useSunflowerMarkers,
+    (active) => {
+      updateState({ useSunflowerMarkers: active })
+      refreshVisualization()
+    },
+  )
 }
 
 function setupKeyboardShortcuts(): void {
@@ -115,19 +134,14 @@ function setupKeyboardShortcuts(): void {
     if (e.code === 'Space') {
       e.preventDefault()
       togglePlayback()
-      return
+    } else if (e.code === 'KeyF') {
+      toggleFullscreen()
     }
-    if (e.code === 'KeyF') toggleFullscreen()
   })
 }
 
 export function togglePlayback(): void {
-  const { isPlaying } = getState()
-  if (isPlaying) {
-    stopPlayback()
-  } else {
-    startPlayback()
-  }
+  getState().isPlaying ? stopPlayback() : startPlayback()
 }
 
 export function startPlayback(): void {
@@ -218,12 +232,11 @@ function refreshVisualization(): void {
 
 export function setPlaybackSpeed(speed: number): void {
   updateState({ playbackSpeed: speed })
-  updateSpeedButtonsUI(speed)
+  syncSelectValue('speed-select', String(speed))
 }
 
 function updatePlayButtonUI(isPlaying: boolean): void {
   const { playIcon, pauseIcon } = requireTimelineUi()
-
   if (isPlaying) {
     hideElement(playIcon)
     showElement(pauseIcon)
@@ -233,26 +246,18 @@ function updatePlayButtonUI(isPlaying: boolean): void {
   }
 }
 
-function updateSpeedButtonsUI(activeSpeed: number): void {
-  const select = document.getElementById('speed-select') as HTMLSelectElement | null
-  if (select) select.value = String(activeSpeed)
+function syncSelectValue(id: string, value: string): void {
+  const select = document.getElementById(id) as HTMLSelectElement | null
+  if (select) select.value = value
 }
 
 function syncSpeedSelect(): void {
-  const select = document.getElementById('speed-select') as HTMLSelectElement | null
-  if (select) select.value = String(getState().playbackSpeed)
-
-  const activitySelect = document.getElementById('activity-filter') as HTMLSelectElement | null
-  if (activitySelect) activitySelect.value = getState().activityFilter
+  syncSelectValue('speed-select', String(getState().playbackSpeed))
+  syncSelectValue('activity-filter', getState().activityFilter)
 }
 
 export function toggleFullscreen(): void {
-  const { isFullscreen } = getState()
-  if (isFullscreen) {
-    exitFullscreen()
-  } else {
-    enterFullscreen()
-  }
+  getState().isFullscreen ? exitFullscreen() : enterFullscreen()
 }
 
 function enterFullscreen(): void {

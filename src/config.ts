@@ -64,16 +64,18 @@ export const MARKER_COUNT_SCALE_MAX = 50
 
 export const MARKER_COLORS = {
   recent: {
-    fill: '#e6fd53', // Limette
-    stroke: '#4f6a5f', // darker edge for contrast
+    fill: '#e6fd53', // Limette (bright highlight)
+    stroke: '#4f6a5f',
     fillOpacity: 0.9,
-    weight: 1.6,
+    strokeOpacity: 0.9,
+    strokeWidth: 1.4,
   },
   cumulative: {
-    fill: '#78a08c', // Salbei
+    fill: '#4f6a5f', // Wald green for cumulative dots
     stroke: '#4f6a5f',
-    fillOpacity: 0.5,
-    weight: 0.9,
+    fillOpacity: 0.55,
+    strokeOpacity: 0.9,
+    strokeWidth: 1.1,
   },
 } as const
 
