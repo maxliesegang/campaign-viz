@@ -2,10 +2,11 @@ import { addDays, differenceInDays } from 'date-fns'
 import { AD_MODE_DURATION_MS, BASE_DAYS_PER_MS, UPDATE_INTERVAL_DAYS } from '../config'
 import { getState, resetToStart, updateState } from '../state'
 import { getElement, hideElement, showElement } from '../utils/dom'
-import { getDateRange, type ProcessedActivity } from '../data/activities'
-import type { ActivityFilter } from '../types/activity'
+import { getDateRange, selectVisibleActivities, type ProcessedActivity } from '../data/activities'
+import type { ActivityFilter, ActivityCounts } from '../types/activity'
 import { updateDateDisplay, updateMapVisualization } from './MapController'
-import { showFinalOverlay, updateStats } from './StatsController'
+import { showFinalOverlay } from './StatsController'
+import { handleFaceCelebration, resetFaceCelebration } from './FaceCelebration'
 
 type TimelineUi = {
   slider: HTMLInputElement
@@ -16,10 +17,12 @@ type TimelineUi = {
   mainContainer: HTMLElement
   timeline: HTMLElement
   overlay: HTMLElement
+  cemToggle: HTMLElement
 }
 
 let activities: ProcessedActivity[] = []
 let timelineUi: TimelineUi | null = null
+let lastUpdateInterval = -1
 
 export function initTimeline(processedActivities: ProcessedActivity[]): void {
   activities = processedActivities
@@ -38,6 +41,7 @@ function collectTimelineUi(): TimelineUi {
     mainContainer: getElement('main-container'),
     timeline: getElement('timeline-container'),
     overlay: getElement('final-overlay'),
+    cemToggle: getElement('cem-toggle'),
   }
 }
 
@@ -53,6 +57,7 @@ function setupTimelineListeners(): void {
   ui.fullscreenButton.addEventListener('click', toggleFullscreen)
   wireSpeedSelect()
   wireActivityFilter()
+  wireCemToggle()
 
   setupKeyboardShortcuts()
 }
@@ -60,10 +65,10 @@ function setupTimelineListeners(): void {
 function handleSliderChange(e: Event): void {
   const { start } = getDateRange()
   const dayOffset = parseFloat((e.target as HTMLInputElement).value)
+  lastUpdateInterval = -1
   updateState({
     currentDate: addDays(start, dayOffset),
     dayOffset,
-    lastUpdateInterval: -1,
   })
   refreshVisualization()
 }
@@ -84,6 +89,25 @@ function wireActivityFilter(): void {
     updateState({ activityFilter: select.value as ActivityFilter })
     refreshVisualization()
   })
+}
+
+function wireCemToggle(): void {
+  const btn = document.getElementById('cem-toggle')
+  if (!btn) return
+
+  const sync = () => {
+    const { cemMode } = getState()
+    btn.setAttribute('aria-pressed', cemMode ? 'true' : 'false')
+  }
+
+  btn.addEventListener('click', () => {
+    const next = !getState().cemMode
+    updateState({ cemMode: next })
+    if (!next) resetFaceCelebration()
+    sync()
+  })
+
+  sync()
 }
 
 function setupKeyboardShortcuts(): void {
@@ -152,6 +176,8 @@ function animate(): void {
     if (state.isFullscreen) showFinalOverlay(activities)
     setTimeout(() => {
       resetToStart()
+      lastUpdateInterval = -1
+      resetFaceCelebration()
       syncSliderToDate()
       refreshVisualization()
       startPlayback()
@@ -162,8 +188,8 @@ function animate(): void {
   const currentInterval = Math.floor(newDayOffset / UPDATE_INTERVAL_DAYS)
   updateState({ dayOffset: newDayOffset, currentDate: addDays(start, newDayOffset) })
 
-  if (currentInterval !== state.lastUpdateInterval) {
-    updateState({ lastUpdateInterval: currentInterval })
+  if (currentInterval !== lastUpdateInterval) {
+    lastUpdateInterval = currentInterval
     syncSliderToDate()
     refreshVisualization()
   }
@@ -181,7 +207,13 @@ function syncSliderToDate(): void {
 function refreshVisualization(): void {
   updateDateDisplay()
   updateMapVisualization(activities)
-  updateStats(activities)
+
+  const visibleActivities = selectVisibleActivities(activities, getState())
+  const counts: ActivityCounts = { HOUSE: 0, POSTER: 0 }
+  for (const activity of visibleActivities) {
+    counts[activity.type] += activity.count
+  }
+  handleFaceCelebration(counts)
 }
 
 export function setPlaybackSpeed(speed: number): void {
@@ -232,6 +264,8 @@ function enterFullscreen(): void {
   hideElement(ui.overlay)
 
   resetToStart()
+  lastUpdateInterval = -1
+  resetFaceCelebration()
   syncSliderToDate()
   refreshVisualization()
 

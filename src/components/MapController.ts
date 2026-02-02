@@ -1,6 +1,6 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { addDays, format, isAfter, isSameDay } from 'date-fns'
+import { format } from 'date-fns'
 import { de } from 'date-fns/locale'
 import {
   MAP_CENTER,
@@ -8,7 +8,6 @@ import {
   MAP_MAX_ZOOM,
   MAP_STYLES,
   DEFAULT_MAP_STYLE_ID,
-  RECENT_DAYS,
   RECENT_MARKER_COUNT,
   MARKER_BASE_RADIUS,
   MARKER_MAX_RADIUS,
@@ -101,7 +100,6 @@ function getStyleOrDefault(id: string) {
 
 export function updateMapVisualization(activities: ProcessedActivity[]): void {
   const { markersLayer } = requireMapContext()
-  const { currentDate } = getState()
   const visibleActivities = selectVisibleActivities(activities, getState())
 
   if (!visibleActivities.length) {
@@ -109,8 +107,7 @@ export function updateMapVisualization(activities: ProcessedActivity[]): void {
     return
   }
 
-  const recentCutoff = addDays(currentDate, -RECENT_DAYS)
-  const recentKeys = computeRecentActivityKeys(visibleActivities, recentCutoff)
+  const recentKeys = computeRecentActivityKeys(visibleActivities)
   const visibleKeys = new Set<string>()
 
   for (const activity of visibleActivities) {
@@ -188,32 +185,14 @@ function computeRadius(count: number): number {
   return MARKER_BASE_RADIUS + countScale * (MARKER_MAX_RADIUS - MARKER_BASE_RADIUS)
 }
 
-function computeRecentActivityKeys(
-  visibleActivities: ProcessedActivity[],
-  recentCutoff: Date,
-): Set<string> {
+function computeRecentActivityKeys(visibleActivities: ProcessedActivity[]): Set<string> {
   if (!visibleActivities.length) return new Set()
 
   const sortedByReveal = [...visibleActivities].sort(
     (a, b) => getRevealTimestamp(a) - getRevealTimestamp(b),
   )
-  const recentByCount = sortedByReveal.slice(-RECENT_MARKER_COUNT)
-  const withinWindow = visibleActivities.filter((activity) =>
-    isRecent(activity.dateObj, recentCutoff),
-  )
 
-  const shouldChurnHighlights = visibleActivities.length >= RECENT_MARKER_COUNT
-  const candidates = shouldChurnHighlights
-    ? recentByCount
-    : withinWindow.length
-      ? withinWindow
-      : recentByCount
-
-  return new Set(candidates.map(createActivityKey))
-}
-
-function isRecent(date: Date, cutoff: Date): boolean {
-  return isAfter(date, cutoff) || isSameDay(date, cutoff)
+  return new Set(sortedByReveal.slice(-RECENT_MARKER_COUNT).map(createActivityKey))
 }
 
 function getRevealTimestamp(activity: ProcessedActivity): number {
@@ -274,11 +253,6 @@ export function updateDateDisplay(): void {
   if (dateDisplay) {
     dateDisplay.textContent = format(currentDate, 'd. MMMM yyyy', { locale: de })
   }
-}
-
-export function getMap(): L.Map {
-  const { map } = requireMapContext()
-  return map
 }
 
 function requireMapContext(): MapContext {

@@ -48,13 +48,14 @@ export const START_DATE = new Date('2026-01-01')
 export const END_DATE = new Date('2026-03-08')
 
 // Timeline & Animation
-export const RECENT_DAYS = 2 // primary window for "recent" highlighting
-export const RECENT_MARKER_COUNT = 80 // minimum recent markers; only used to backfill when the day window is sparse
+export const RECENT_MARKER_COUNT = 80 // Number of most recently revealed markers to highlight
 export const AD_MODE_DURATION_MS = 25000
 export const BASE_DAYS_PER_MS = 1 / 800 // 1 day per 800ms at 1x speed (~1.25 days/sec)
 export const UPDATE_INTERVAL_DAYS = 0.05 // Update visualization ~20 times per day for smoother steps
-export const NUMBER_ANIMATION_DURATION_MS = 150
 export const MS_PER_DAY = 86_400_000
+export const FACE_TRIGGER_HOUSE = 45 // show face every N house visits
+export const FACE_TRIGGER_POSTER = 90 // show face every N posters
+export const FACE_MAX_ACTIVE = 10
 
 // Marker Styling
 export const MARKER_BASE_RADIUS = 3

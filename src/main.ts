@@ -8,9 +8,9 @@ import {
   updateDateDisplay,
 } from './components/MapController'
 import { initTimeline } from './components/TimelineController'
-import { updateStats } from './components/StatsController'
 import { processedActivities, getDateRange } from './data/activities'
 import { initializeStartDate } from './state'
+import { initFaceCelebration } from './components/FaceCelebration'
 
 function init(): void {
   // Initialize state with actual date range from data
@@ -19,13 +19,13 @@ function init(): void {
 
   queryElement<HTMLDivElement>('#app').innerHTML = renderTemplate()
 
+  initFaceCelebration()
   initMap()
   initMapStyleControls()
   initTimeline(processedActivities)
 
   updateDateDisplay()
   updateMapVisualization(processedActivities)
-  updateStats(processedActivities)
 }
 
 document.addEventListener('DOMContentLoaded', init)

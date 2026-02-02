@@ -158,7 +158,7 @@ const importedActivities: Activity[] = Object.values(importedActivityModules).fl
 })
 
 const hasImportedData = importedActivities.length > 0
-export const sampleActivities: Activity[] = hasImportedData
+const sampleActivities: Activity[] = hasImportedData
   ? importedActivities
   : generateSampleActivities()
 
