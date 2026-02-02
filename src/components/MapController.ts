@@ -14,7 +14,7 @@ import {
   ACTIVITY_LABELS,
   MS_PER_DAY,
 } from '../config'
-import { SUNFLOWER_PATH, SUNFLOWER_VIEWBOX } from '../assets/sunflower'
+import { getSunflowerSprite, initSunflowerSprites } from '../assets/sunflowerSprite'
 import { getState } from '../state'
 import type { ProcessedActivity } from '../data/activities'
 import { selectVisibleActivities } from '../data/activities'
@@ -28,7 +28,7 @@ const MIN_MARKER_SIZE = 6
 const ZOOM_SCALE_BASE = 1.3
 const ZOOM_SCALE_MIN = 0.6
 const ZOOM_SCALE_MAX = 2.6
-const SUNFLOWER_HTML = `<svg viewBox="${SUNFLOWER_VIEWBOX}" class="sunflower-shape" aria-hidden="true"><path d="${SUNFLOWER_PATH}" fill-rule="evenodd"/></svg>`
+const ZOOM_DEBOUNCE_MS = 50
 
 interface MapContext {
   map: L.Map
@@ -39,12 +39,22 @@ interface MapContext {
 let mapContext: MapContext | null = null
 const markerRegistry = new Map<string, MarkerEntry>()
 
+// Cache for recent activity keys to avoid re-sorting on every frame
+let cachedRecentKeys: Set<string> | null = null
+let cachedVisibleCount = -1
+
+// Debounce timer for zoom updates
+let zoomDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
 function getMarkerStyle(): MarkerStyle {
   return getState().useSunflowerMarkers ? 'sunflower' : 'simple'
 }
 
 export function initMap(): void {
   if (mapContext) return
+
+  // Pre-render sunflower sprites for better performance
+  initSunflowerSprites()
 
   const map = L.map('map', {
     center: MAP_CENTER,
@@ -61,7 +71,10 @@ export function initMap(): void {
   const markersLayer = L.layerGroup().addTo(map)
   mapContext = { map, markersLayer, baseLayer }
 
-  map.on('zoom', () => updateMarkerScaleForZoom())
+  map.on('zoom', () => {
+    if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer)
+    zoomDebounceTimer = setTimeout(updateMarkerScaleForZoom, ZOOM_DEBOUNCE_MS)
+  })
 }
 
 export function initMapStyleControls(): void {
@@ -109,14 +122,14 @@ function getStyleOrDefault(id: string) {
   return MAP_STYLES.find((s) => s.id === id) ?? MAP_STYLES[0]
 }
 
-export function updateMapVisualization(activities: ProcessedActivity[]): void {
+export function updateMapVisualization(activities: ProcessedActivity[]): ProcessedActivity[] {
   const { markersLayer } = requireMapContext()
   const visibleActivities = selectVisibleActivities(activities, getState())
   const markerStyle = getMarkerStyle()
 
   if (!visibleActivities.length) {
     clearMarkers(markersLayer)
-    return
+    return visibleActivities
   }
 
   const recentKeys = computeRecentActivityKeys(visibleActivities)
@@ -131,6 +144,12 @@ export function updateMapVisualization(activities: ProcessedActivity[]): void {
   }
 
   removeStaleMarkers(markersLayer, visibleKeys)
+  return visibleActivities
+}
+
+export function invalidateRecentKeysCache(): void {
+  cachedRecentKeys = null
+  cachedVisibleCount = -1
 }
 
 function upsertMarker(
@@ -216,13 +235,25 @@ function computeRadius(count: number): number {
 }
 
 function computeRecentActivityKeys(visibleActivities: ProcessedActivity[]): Set<string> {
-  if (!visibleActivities.length) return new Set()
+  if (!visibleActivities.length) {
+    cachedRecentKeys = null
+    cachedVisibleCount = 0
+    return new Set()
+  }
+
+  // Use cached result if visible count hasn't changed
+  // (activities only grow during playback, so same count = same set)
+  if (cachedRecentKeys && visibleActivities.length === cachedVisibleCount) {
+    return cachedRecentKeys
+  }
 
   const sortedByReveal = [...visibleActivities].sort(
     (a, b) => getRevealTimestamp(a) - getRevealTimestamp(b),
   )
 
-  return new Set(sortedByReveal.slice(-RECENT_MARKER_COUNT).map(createActivityKey))
+  cachedRecentKeys = new Set(sortedByReveal.slice(-RECENT_MARKER_COUNT).map(createActivityKey))
+  cachedVisibleCount = visibleActivities.length
+  return cachedRecentKeys
 }
 
 function getRevealTimestamp(activity: ProcessedActivity): number {
@@ -260,10 +291,11 @@ function toRgba(hex: string, alpha = 1): string {
 
 function createSunflowerIcon(radius: number, layerType: LayerType): L.DivIcon {
   const size = Math.max(radius * 2, MIN_MARKER_SIZE)
+  const sprite = getSunflowerSprite(layerType)
 
   return L.divIcon({
     className: buildMarkerClass(layerType, 'sunflower'),
-    html: SUNFLOWER_HTML,
+    html: `<img src="${sprite}" class="sunflower-sprite" alt="" draggable="false" />`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
@@ -294,9 +326,15 @@ function applyMarkerStyle(
   const sizePx = Math.max(radius * 2, MIN_MARKER_SIZE) * zoomScale
 
   if (markerStyle === 'sunflower') {
+    // PNG sprite - update size and sprite variant (colors baked into sprite)
     el.style.setProperty('--sunflower-size', `${sizePx}px`)
-    el.style.setProperty('--sunflower-fill', colors.fill)
-    el.style.setProperty('--sunflower-stroke', colors.stroke)
+    const img = el.querySelector<HTMLImageElement>('.sunflower-sprite')
+    if (img) {
+      const sprite = getSunflowerSprite(layerType)
+      if (img.src !== sprite) {
+        img.src = sprite
+      }
+    }
   } else {
     const fill = toRgba(colors.fill, colors.fillOpacity ?? 1)
     const stroke = toRgba(colors.stroke, colors.strokeOpacity ?? 1)

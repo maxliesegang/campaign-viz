@@ -488,15 +488,13 @@ body {
   color: var(--sunflower-fill);
 }
 
-.sunflower-shape {
+/* PNG sprite - much faster than complex SVG path rendering */
+.sunflower-sprite {
   width: 100%;
   height: 100%;
   display: block;
-  fill: var(--sunflower-fill);
-  stroke: var(--sunflower-stroke);
-  stroke-width: 14;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+  pointer-events: none;
+  user-select: none;
 }
 
 .dot-icon {
@@ -524,9 +522,10 @@ body {
 .marker {
   transition:
     transform 0.14s ease,
-    filter 0.22s ease,
     opacity 0.16s ease;
   transform-origin: center center;
+  will-change: transform, opacity;
+  contain: layout style;
 }
 
 .marker-switch {
@@ -547,8 +546,14 @@ body {
   }
 }
 
+/* Recent marker highlight - use transform instead of filter for better Firefox performance */
 .marker-recent {
-  filter: drop-shadow(0 0 6px rgba(79, 106, 95, 0.5));
+  transform: scale(1.15);
+}
+
+/* Dot markers can use box-shadow (cheaper than drop-shadow on simple shapes) */
+.marker-recent.dot-icon .dot-shape {
+  box-shadow: 0 0 8px 2px rgba(230, 253, 83, 0.6);
 }
 
 .marker-cumulative {

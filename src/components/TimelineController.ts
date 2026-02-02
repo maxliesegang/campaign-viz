@@ -2,9 +2,13 @@ import { addDays, differenceInDays } from 'date-fns'
 import { AD_MODE_DURATION_MS, BASE_DAYS_PER_MS, UPDATE_INTERVAL_DAYS } from '../config'
 import { getState, resetToStart, updateState } from '../state'
 import { getElement, hideElement, showElement } from '../utils/dom'
-import { getDateRange, selectVisibleActivities, type ProcessedActivity } from '../data/activities'
+import { getDateRange, type ProcessedActivity } from '../data/activities'
 import type { ActivityFilter, ActivityCounts } from '../types/activity'
-import { updateDateDisplay, updateMapVisualization } from './MapController'
+import {
+  updateDateDisplay,
+  updateMapVisualization,
+  invalidateRecentKeysCache,
+} from './MapController'
 import { showFinalOverlay } from './StatsController'
 import { handleFaceCelebration, resetFaceCelebration } from './FaceCelebration'
 
@@ -69,6 +73,7 @@ function handleSliderChange(e: Event): void {
   const { start } = getDateRange()
   const dayOffset = parseFloat((e.target as HTMLInputElement).value)
   lastUpdateInterval = -1
+  invalidateRecentKeysCache() // Slider can move backward, invalidate cache
   updateState({
     currentDate: addDays(start, dayOffset),
     dayOffset,
@@ -89,6 +94,7 @@ function wireActivityFilter(): void {
   const select = document.getElementById('activity-filter') as HTMLSelectElement | null
   if (!select) return
   select.addEventListener('change', () => {
+    invalidateRecentKeysCache() // Filter changed, invalidate cache
     updateState({ activityFilter: select.value as ActivityFilter })
     refreshVisualization()
   })
@@ -191,6 +197,7 @@ function animate(): void {
     setTimeout(() => {
       resetToStart()
       lastUpdateInterval = -1
+      invalidateRecentKeysCache()
       resetFaceCelebration()
       syncSliderToDate()
       refreshVisualization()
@@ -220,9 +227,8 @@ function syncSliderToDate(): void {
 
 function refreshVisualization(): void {
   updateDateDisplay()
-  updateMapVisualization(activities)
+  const visibleActivities = updateMapVisualization(activities)
 
-  const visibleActivities = selectVisibleActivities(activities, getState())
   const counts: ActivityCounts = { HOUSE: 0, POSTER: 0 }
   for (const activity of visibleActivities) {
     counts[activity.type] += activity.count
@@ -270,6 +276,7 @@ function enterFullscreen(): void {
 
   resetToStart()
   lastUpdateInterval = -1
+  invalidateRecentKeysCache()
   resetFaceCelebration()
   syncSliderToDate()
   refreshVisualization()
