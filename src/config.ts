@@ -1,9 +1,6 @@
-import type L from 'leaflet'
-import type { ActivityType } from './types/activity'
+import type { ActivityType, MarkerVariant } from './types/activity'
 
-// Map Configuration
-export const MAP_CENTER: L.LatLngTuple = [49.0069, 8.4037]
-export const MAP_INITIAL_ZOOM = 12
+// Map Configuration (center and zoom are now in regions.ts)
 export const MAP_MAX_ZOOM = 19
 
 export const MAP_STYLES = [
@@ -59,10 +56,16 @@ export const FACE_MAX_ACTIVE = 10
 
 // Marker Styling
 export const MARKER_BASE_RADIUS = 3
-export const MARKER_MAX_RADIUS = 8
-export const MARKER_COUNT_SCALE_MAX = 50
 
-export const MARKER_COLORS = {
+interface MarkerColor {
+  fill: string
+  stroke: string
+  fillOpacity: number
+  strokeOpacity: number
+  strokeWidth: number
+}
+
+export const MARKER_COLORS: Record<MarkerVariant, MarkerColor> = {
   recent: {
     fill: '#e6fd53', // Limette (bright highlight)
     stroke: '#4f6a5f',
@@ -77,7 +80,7 @@ export const MARKER_COLORS = {
     strokeOpacity: 0.9,
     strokeWidth: 1.1,
   },
-} as const
+}
 
 // Activity Type Labels (German) - maps API types to display labels
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {

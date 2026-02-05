@@ -4,9 +4,10 @@ Guidance for AI/automation agents working in this repository. Keep edits minimal
 
 ## Project Snapshot
 
-- Purpose: Interactive visualization of the Karlsruhe 2026 campaign (house visits + poster placements) with timeline playback.
-- Stack: Vite 7 + TypeScript (strict) + Leaflet + date-fns + Tailwind CSS v4 (via `@tailwindcss/vite`).
+- Purpose: Interactive visualization of the 2026 campaign (house visits + poster placements) with timeline playback. Supports multiple regions (Karlsruhe, Baden-Württemberg).
+- Stack: Vite 7 + TypeScript (strict) + Leaflet + leaflet.markercluster + date-fns + Tailwind CSS v4 (via `@tailwindcss/vite`).
 - Entry point: `src/main.ts` renders the UI (`components/template.ts`), wires map (`MapController`), timeline (`TimelineController`), stats, and celebrations.
+- Routing: Hash-based (`#/karlsruhe`, `#/bawu`). Default is Karlsruhe.
 - Hosting: `vite.config.ts` sets `base` to `/${GITHUB_REPOSITORY#*/}/` in production for GitHub Pages; local dev uses `/`.
 
 ## Runbook
@@ -19,24 +20,28 @@ Guidance for AI/automation agents working in this repository. Keep edits minimal
 
 ## Data & Privacy
 
-- Source data lives in `src/data/activity-files/*.json` (already blurred). If none exist, synthetic data is generated.
-- Raw exports belong in `raw-exports/` (gitignored). Do **not** commit raw data. `npm run transform` reads that folder, blurs coords (30–100m), aggregates to ~100m grid, and writes `<name>-transformed.json` into `src/data/activity-files/`.
+- Source data is organized by region: `src/data/activity-files/karlsruhe/`, `src/data/activity-files/bawu/`. Each region has `HOUSE.json` and `POSTER.json`.
+- Raw exports belong in `raw-exports/` (gitignored). Do **not** commit raw data. `npm run transform` reads that folder, blurs coords (30–100m), aggregates to ~100m grid, and writes transformed files.
 - Date range is derived from the loaded data (`getDateRange`); `START_DATE`/`END_DATE` in `src/config.ts` only seed the synthetic generator.
 - Keep any new data blurred; avoid reducing blur radius unless explicitly requested.
 
 ## Architecture Map
 
+- `src/regions.ts`: Region configurations (center, zoom, clustering settings). Add new regions here.
+- `src/router.ts`: Hash-based routing for region switching.
 - `src/config.ts`: Map styles, timeline constants, marker styling, celebration thresholds. Default map style id: `carto-dark`.
-- `src/components/MapController.ts`: Leaflet setup, marker lifecycle, tooltip formatting, style switching (`data-map-style` buttons + `<select>`).
+- `src/components/MapController.ts`: Leaflet setup, marker lifecycle, tooltip formatting, style switching. Supports clustering for large datasets.
+- `src/components/MarkerCluster.ts`: Leaflet.markercluster configuration for performance with large datasets.
 - `src/components/TimelineController.ts`: Slider + playback loop, keyboard shortcuts (Space, F), fullscreen/ad mode timing, activity filtering, Cem mode toggle.
 - `src/components/StatsController.ts`: Final overlay stats.
 - `src/components/FaceCelebration.ts`: Triggered when counts reach `FACE_TRIGGER_*`; face images auto-discovered from `public/faces/*`.
-- `src/data/activities.ts`: Loads/normalizes activities, computes visibility windows, filters by date/type, blurs coords when needed.
+- `src/data/activities.ts`: Loads/normalizes activities per region, computes visibility windows, filters by date/type, blurs coords when needed.
 - `src/utils/*`: DOM helpers, deterministic random, privacy blur.
 - Styling: `src/style.css` (Tailwind layer + custom CSS variables, animations, responsive layout). Prefer extending here over ad-hoc styles.
 
 ## Configuration Knobs
 
+- Regions: add new regions in `src/regions.ts` with `id`, `name`, `center`, `initialZoom`, and `clusteringEnabled`.
 - Map styles: edit `MAP_STYLES` in `src/config.ts`; keep `attribution` intact to satisfy tile provider terms.
 - Timeline: `BASE_DAYS_PER_MS`, `UPDATE_INTERVAL_DAYS`, `RECENT_MARKER_COUNT`, `AD_MODE_DURATION_MS`.
 - Visuals: marker radii/colors, `FACE_MAX_ACTIVE`, celebration trigger thresholds.
@@ -60,14 +65,19 @@ Guidance for AI/automation agents working in this repository. Keep edits minimal
 
 ## Quick File References
 
-- `src/config.ts`
+- `src/regions.ts` — Region configuration
+- `src/router.ts` — Hash-based routing
+- `src/config.ts` — Global constants
 - `src/components/MapController.ts`
+- `src/components/MarkerCluster.ts`
 - `src/components/TimelineController.ts`
 - `src/components/FaceCelebration.ts`
 - `src/data/activities.ts`
 - `scripts/transform-export.ts`
 - `src/style.css`
-- `public/faces/`, `raw-exports/` (gitignored source), `src/data/activity-files/` (bundled data)
+- `public/faces/`, `raw-exports/` (gitignored source)
+- `src/data/activity-files/karlsruhe/` — Karlsruhe data
+- `src/data/activity-files/bawu/` — Baden-Württemberg data
 
 ## When in Doubt
 

@@ -1,4 +1,4 @@
-import { START_DATE } from './config'
+import { DEFAULT_REGION, type RegionId } from './regions'
 import type { ActivityFilter } from './types/activity'
 
 export interface AppState {
@@ -13,11 +13,12 @@ export interface AppState {
   animationFrameId: number | null
   lastFrameTime: number
   activityFilter: ActivityFilter
+  currentRegion: RegionId
 }
 
 const state: AppState = {
-  startDate: new Date(START_DATE),
-  currentDate: new Date(START_DATE),
+  startDate: new Date(),
+  currentDate: new Date(),
   dayOffset: 0,
   isPlaying: false,
   playbackSpeed: 1,
@@ -27,6 +28,7 @@ const state: AppState = {
   animationFrameId: null,
   lastFrameTime: 0,
   activityFilter: 'ALL',
+  currentRegion: DEFAULT_REGION,
 }
 
 export function getState(): Readonly<AppState> {

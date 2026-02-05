@@ -3,8 +3,6 @@ import 'leaflet/dist/leaflet.css'
 import { format } from 'date-fns'
 import { de } from 'date-fns/locale'
 import {
-  MAP_CENTER,
-  MAP_INITIAL_ZOOM,
   MAP_MAX_ZOOM,
   MAP_STYLES,
   DEFAULT_MAP_STYLE_ID,
@@ -18,10 +16,18 @@ import { getSunflowerSprite, initSunflowerSprites } from '../assets/sunflowerSpr
 import { getState } from '../state'
 import type { ProcessedActivity } from '../data/activities'
 import { selectVisibleActivities } from '../data/activities'
+import type { RegionConfig } from '../regions'
+import type { MarkerVariant } from '../types/activity'
+import { createClusterGroup } from './MarkerCluster'
+import { hexToRgba } from '../utils/color'
 
-type LayerType = 'recent' | 'cumulative'
 type MarkerStyle = 'sunflower' | 'simple'
-type MarkerEntry = { marker: L.Marker; layer: LayerType; radius: number; style: MarkerStyle }
+type MarkerEntry = { marker: L.Marker; variant: MarkerVariant; style: MarkerStyle }
+type MarkerDescriptor = {
+  activity: ProcessedActivity
+  key: string
+  variant: MarkerVariant
+}
 
 const TOOLTIP_OPTIONS: L.TooltipOptions = { direction: 'top', offset: [0, -8] }
 const MIN_MARKER_SIZE = 6
@@ -32,8 +38,10 @@ const ZOOM_DEBOUNCE_MS = 50
 
 interface MapContext {
   map: L.Map
-  markersLayer: L.LayerGroup
+  markersLayer: L.LayerGroup | L.MarkerClusterGroup
   baseLayer: L.TileLayer
+  clusteringEnabled: boolean
+  initialZoom: number
 }
 
 let mapContext: MapContext | null = null
@@ -50,15 +58,15 @@ function getMarkerStyle(): MarkerStyle {
   return getState().useSunflowerMarkers ? 'sunflower' : 'simple'
 }
 
-export function initMap(): void {
+export function initMap(regionConfig: RegionConfig): void {
   if (mapContext) return
 
   // Pre-render sunflower sprites for better performance
   initSunflowerSprites()
 
   const map = L.map('map', {
-    center: MAP_CENTER,
-    zoom: MAP_INITIAL_ZOOM,
+    center: regionConfig.center,
+    zoom: regionConfig.initialZoom,
     zoomControl: false,
     preferCanvas: true,
   })
@@ -68,13 +76,45 @@ export function initMap(): void {
   const initialStyle = getStyleOrDefault(DEFAULT_MAP_STYLE_ID)
   const baseLayer = createTileLayer(initialStyle).addTo(map)
 
-  const markersLayer = L.layerGroup().addTo(map)
-  mapContext = { map, markersLayer, baseLayer }
+  // Use MarkerClusterGroup for regions with clustering enabled
+  const markersLayer = regionConfig.clusteringEnabled
+    ? createClusterGroup().addTo(map)
+    : L.layerGroup().addTo(map)
+
+  mapContext = {
+    map,
+    markersLayer,
+    baseLayer,
+    clusteringEnabled: regionConfig.clusteringEnabled,
+    initialZoom: regionConfig.initialZoom,
+  }
 
   map.on('zoom', () => {
     if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer)
     zoomDebounceTimer = setTimeout(updateMarkerScaleForZoom, ZOOM_DEBOUNCE_MS)
   })
+}
+
+export function destroyMap(): void {
+  if (!mapContext) return
+
+  if (zoomDebounceTimer) {
+    clearTimeout(zoomDebounceTimer)
+    zoomDebounceTimer = null
+  }
+
+  mapContext.markersLayer.clearLayers()
+  markerRegistry.clear()
+  mapContext.map.remove()
+  mapContext = null
+
+  cachedRecentKeys = null
+  cachedVisibleCount = -1
+}
+
+export function reinitializeMap(regionConfig: RegionConfig): void {
+  destroyMap()
+  initMap(regionConfig)
 }
 
 export function initMapStyleControls(): void {
@@ -123,28 +163,71 @@ function getStyleOrDefault(id: string) {
 }
 
 export function updateMapVisualization(activities: ProcessedActivity[]): ProcessedActivity[] {
-  const { markersLayer } = requireMapContext()
+  const ctx = requireMapContext()
   const visibleActivities = selectVisibleActivities(activities, getState())
-  const markerStyle = getMarkerStyle()
 
   if (!visibleActivities.length) {
-    clearMarkers(markersLayer)
+    clearMarkers(ctx.markersLayer)
     return visibleActivities
   }
 
-  const recentKeys = computeRecentActivityKeys(visibleActivities)
-  const visibleKeys = new Set<string>()
+  const markerStyle = getMarkerStyle()
+  const descriptors = buildMarkerDescriptors(visibleActivities)
 
-  for (const activity of visibleActivities) {
-    const key = createActivityKey(activity)
-    const layerType: LayerType = recentKeys.has(key) ? 'recent' : 'cumulative'
-
-    visibleKeys.add(key)
-    upsertMarker(markersLayer, activity, key, layerType, markerStyle)
+  if (ctx.clusteringEnabled) {
+    syncClusterGroup(ctx.markersLayer as L.MarkerClusterGroup, descriptors, markerStyle)
+  } else {
+    syncLayerGroup(ctx.markersLayer as L.LayerGroup, descriptors, markerStyle)
   }
 
-  removeStaleMarkers(markersLayer, visibleKeys)
   return visibleActivities
+}
+
+function buildMarkerDescriptors(activities: ProcessedActivity[]): MarkerDescriptor[] {
+  const recentKeys = computeRecentActivityKeys(activities)
+  return activities.map((activity) => {
+    const key = createActivityKey(activity)
+    const variant: MarkerVariant = recentKeys.has(key) ? 'recent' : 'cumulative'
+    return { activity, key, variant }
+  })
+}
+
+function syncLayerGroup(
+  layerGroup: L.LayerGroup,
+  descriptors: MarkerDescriptor[],
+  markerStyle: MarkerStyle,
+): void {
+  const visibleKeys = new Set<string>()
+
+  for (const descriptor of descriptors) {
+    syncMarker(layerGroup, descriptor, markerStyle)
+    visibleKeys.add(descriptor.key)
+  }
+
+  removeStaleMarkers(layerGroup, visibleKeys)
+}
+
+function syncClusterGroup(
+  clusterGroup: L.MarkerClusterGroup,
+  descriptors: MarkerDescriptor[],
+  markerStyle: MarkerStyle,
+): void {
+  const visibleKeys = new Set<string>()
+  const pendingAdd: L.Marker[] = []
+
+  for (const descriptor of descriptors) {
+    const { created, marker } = syncMarker(clusterGroup, descriptor, markerStyle, {
+      deferAdd: true,
+    })
+    if (created) pendingAdd.push(marker)
+    visibleKeys.add(descriptor.key)
+  }
+
+  if (pendingAdd.length) {
+    clusterGroup.addLayers(pendingAdd)
+  }
+
+  removeStaleMarkers(clusterGroup, visibleKeys)
 }
 
 export function invalidateRecentKeysCache(): void {
@@ -152,42 +235,53 @@ export function invalidateRecentKeysCache(): void {
   cachedVisibleCount = -1
 }
 
-function upsertMarker(
-  markersLayer: L.LayerGroup,
-  activity: ProcessedActivity,
-  key: string,
-  layerType: LayerType,
+function syncMarker(
+  targetLayer: L.LayerGroup | L.MarkerClusterGroup,
+  descriptor: MarkerDescriptor,
   markerStyle: MarkerStyle,
-): void {
-  const radius = computeRadius(activity.count)
+  options: { deferAdd?: boolean } = {},
+): { created: boolean; marker: L.Marker } {
+  const { deferAdd = false } = options
+  const { key, activity, variant } = descriptor
   const existing = markerRegistry.get(key)
 
-  if (existing) {
-    const layerChanged = existing.layer !== layerType
-    const styleChanged = existing.style !== markerStyle
-
-    if (!styleChanged) {
-      applyMarkerStyle(existing.marker, layerType, radius, markerStyle)
-      updateMarkerClasses(existing.marker, layerType, layerChanged, markerStyle)
-      adjustZIndex(existing.marker, layerType)
-
-      existing.layer = layerType
-      existing.radius = radius
-      return
+  const needsRebuild = !existing || existing.style !== markerStyle
+  if (needsRebuild) {
+    if (existing) {
+      targetLayer.removeLayer(existing.marker)
+      markerRegistry.delete(key)
     }
 
-    markersLayer.removeLayer(existing.marker)
-    markerRegistry.delete(key)
+    const marker = createMarker(activity, variant, markerStyle)
+    markerRegistry.set(key, { marker, variant, style: markerStyle })
+    if (!deferAdd) {
+      targetLayer.addLayer(marker)
+    }
+    applyMarkerStyle(marker, variant, markerStyle)
+    adjustZIndex(marker, variant)
+    return { created: true, marker }
   }
 
-  const marker = createMarker(activity, layerType, markerStyle)
-  markersLayer.addLayer(marker)
-  applyMarkerStyle(marker, layerType, radius, markerStyle)
-  adjustZIndex(marker, layerType)
-  markerRegistry.set(key, { marker, layer: layerType, radius, style: markerStyle })
+  const marker = existing.marker
+  const variantChanged = existing.variant !== variant
+
+  if (variantChanged) {
+    applyMarkerStyle(marker, variant, markerStyle)
+    updateMarkerClasses(marker, variant, true, markerStyle)
+    adjustZIndex(marker, variant)
+    existing.variant = variant
+  } else {
+    // Keep styles in sync with zoom/style toggles
+    applyMarkerStyle(marker, variant, markerStyle)
+  }
+
+  return { created: false, marker }
 }
 
-function removeStaleMarkers(markersLayer: L.LayerGroup, visibleKeys: Set<string>): void {
+function removeStaleMarkers(
+  markersLayer: L.LayerGroup | L.MarkerClusterGroup,
+  visibleKeys: Set<string>,
+): void {
   for (const [key, entry] of markerRegistry) {
     if (!visibleKeys.has(key)) {
       markersLayer.removeLayer(entry.marker)
@@ -196,21 +290,17 @@ function removeStaleMarkers(markersLayer: L.LayerGroup, visibleKeys: Set<string>
   }
 }
 
-function clearMarkers(markersLayer: L.LayerGroup): void {
+function clearMarkers(markersLayer: L.LayerGroup | L.MarkerClusterGroup): void {
   markersLayer.clearLayers()
   markerRegistry.clear()
 }
 
 function createMarker(
   activity: ProcessedActivity,
-  layerType: LayerType,
+  variant: MarkerVariant,
   markerStyle: MarkerStyle,
 ): L.Marker {
-  const radius = computeRadius(activity.count)
-  const icon =
-    markerStyle === 'sunflower'
-      ? createSunflowerIcon(radius, layerType)
-      : createDotIcon(radius, layerType)
+  const icon = markerStyle === 'sunflower' ? createSunflowerIcon(variant) : createDotIcon(variant)
 
   const marker = L.marker([activity.blurredLat, activity.blurredLng], {
     icon,
@@ -227,11 +317,6 @@ function buildTooltipContent(activity: ProcessedActivity): string {
     <div class="text-[11px] text-gray-400">${format(activity.dateObj, 'EEEE', { locale: de })}</div>
     <div>${ACTIVITY_LABELS[activity.type]}: ${activity.count}</div>
   </div>`
-}
-
-function computeRadius(count: number): number {
-  void count // keep signature; size is fixed
-  return MARKER_BASE_RADIUS
 }
 
 function computeRecentActivityKeys(visibleActivities: ProcessedActivity[]): Set<string> {
@@ -260,52 +345,23 @@ function getRevealTimestamp(activity: ProcessedActivity): number {
   return activity.dateObj.getTime() + activity.revealFraction * MS_PER_DAY
 }
 
-function getMarkerColors(layerType: LayerType) {
-  return MARKER_COLORS[layerType]
-}
-
-function toRgba(hex: string, alpha = 1): string {
-  if (hex.startsWith('rgb')) {
-    // Preserve existing rgb/rgba strings
-    if (hex.startsWith('rgba')) return hex
-    return hex.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`)
-  }
-
-  const sanitized = hex.replace('#', '')
-  if (sanitized.length !== 3 && sanitized.length !== 6) return hex
-
-  const expanded =
-    sanitized.length === 3
-      ? sanitized
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : sanitized
-
-  const value = parseInt(expanded, 16)
-  const r = (value >> 16) & 255
-  const g = (value >> 8) & 255
-  const b = value & 255
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
-}
-
-function createSunflowerIcon(radius: number, layerType: LayerType): L.DivIcon {
-  const size = Math.max(radius * 2, MIN_MARKER_SIZE)
-  const sprite = getSunflowerSprite(layerType)
+function createSunflowerIcon(variant: MarkerVariant): L.DivIcon {
+  const size = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE)
+  const sprite = getSunflowerSprite(variant)
 
   return L.divIcon({
-    className: buildMarkerClass(layerType, 'sunflower'),
+    className: buildMarkerClass(variant, 'sunflower'),
     html: `<img src="${sprite}" class="sunflower-sprite" alt="" draggable="false" />`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
 }
 
-function createDotIcon(radius: number, layerType: LayerType): L.DivIcon {
-  const size = Math.max(radius * 2, MIN_MARKER_SIZE)
+function createDotIcon(variant: MarkerVariant): L.DivIcon {
+  const size = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE)
 
   return L.divIcon({
-    className: buildMarkerClass(layerType, 'simple'),
+    className: buildMarkerClass(variant, 'simple'),
     html: '<div class="dot-shape" aria-hidden="true"></div>',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -314,76 +370,68 @@ function createDotIcon(radius: number, layerType: LayerType): L.DivIcon {
 
 function applyMarkerStyle(
   marker: L.Marker,
-  layerType: LayerType,
-  radius: number,
+  variant: MarkerVariant,
   markerStyle: MarkerStyle,
 ): void {
   const el = marker.getElement()
   if (!el) return
 
-  const colors = getMarkerColors(layerType)
+  const colors = MARKER_COLORS[variant]
   const zoomScale = computeZoomScale()
-  const sizePx = Math.max(radius * 2, MIN_MARKER_SIZE) * zoomScale
+  const sizePx = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE) * zoomScale
 
   if (markerStyle === 'sunflower') {
-    // PNG sprite - update size and sprite variant (colors baked into sprite)
     el.style.setProperty('--sunflower-size', `${sizePx}px`)
     const img = el.querySelector<HTMLImageElement>('.sunflower-sprite')
     if (img) {
-      const sprite = getSunflowerSprite(layerType)
+      const sprite = getSunflowerSprite(variant)
       if (img.src !== sprite) {
         img.src = sprite
       }
     }
   } else {
-    const fill = toRgba(colors.fill, colors.fillOpacity ?? 1)
-    const stroke = toRgba(colors.stroke, colors.strokeOpacity ?? 1)
-    const borderWidth = colors.strokeWidth ?? 1.2
-
     el.style.setProperty('--dot-size', `${sizePx}px`)
-    el.style.setProperty('--dot-fill', fill)
-    el.style.setProperty('--dot-stroke', stroke)
-    el.style.setProperty('--dot-border-width', `${borderWidth}px`)
+    el.style.setProperty('--dot-fill', hexToRgba(colors.fill, colors.fillOpacity))
+    el.style.setProperty('--dot-stroke', hexToRgba(colors.stroke, colors.strokeOpacity))
+    el.style.setProperty('--dot-border-width', `${colors.strokeWidth}px`)
   }
-
-  el.style.color = colors.fill
 }
 
 function computeZoomScale(): number {
   const ctx = mapContext
   if (!ctx) return 1
   const zoom = ctx.map.getZoom()
-  const scale = Math.pow(ZOOM_SCALE_BASE, zoom - MAP_INITIAL_ZOOM)
+  const scale = Math.pow(ZOOM_SCALE_BASE, zoom - ctx.initialZoom)
   return Math.min(Math.max(scale, ZOOM_SCALE_MIN), ZOOM_SCALE_MAX)
 }
 
 function updateMarkerScaleForZoom(): void {
   for (const entry of markerRegistry.values()) {
-    applyMarkerStyle(entry.marker, entry.layer, entry.radius, entry.style)
+    applyMarkerStyle(entry.marker, entry.variant, entry.style)
   }
 }
 
-function adjustZIndex(marker: L.Marker, layerType: LayerType): void {
-  marker.setZIndexOffset(layerType === 'recent' ? 1000 : 0)
+function adjustZIndex(marker: L.Marker, variant: MarkerVariant): void {
+  marker.setZIndexOffset(variant === 'recent' ? 1000 : 0)
 }
 
 function createActivityKey(activity: ProcessedActivity): string {
   return `${activity.date}|${activity.type}|${activity.blurredLat.toFixed(5)}|${activity.blurredLng.toFixed(5)}|${activity.count}`
 }
 
-function getMarkerClasses(layerType: LayerType, markerStyle: MarkerStyle): string[] {
+function getMarkerClasses(variant: MarkerVariant, markerStyle: MarkerStyle): string[] {
   const iconClass = markerStyle === 'sunflower' ? 'sunflower-icon' : 'dot-icon'
-  const layerClass = layerType === 'recent' ? 'marker-recent' : 'marker-cumulative'
-  return ['marker', iconClass, layerClass]
+  const variantClass = variant === 'recent' ? 'marker-recent' : 'marker-cumulative'
+  return ['marker', iconClass, variantClass]
 }
 
-function buildMarkerClass(layerType: LayerType, markerStyle: MarkerStyle): string {
-  return [...getMarkerClasses(layerType, markerStyle), 'marker-appear'].join(' ')
+function buildMarkerClass(variant: MarkerVariant, markerStyle: MarkerStyle): string {
+  return [...getMarkerClasses(variant, markerStyle), 'marker-appear'].join(' ')
 }
 
 function updateMarkerClasses(
   marker: L.Marker,
-  layerType: LayerType,
+  variant: MarkerVariant,
   animate: boolean,
   markerStyle: MarkerStyle,
 ): void {
@@ -391,7 +439,7 @@ function updateMarkerClasses(
   if (!el) return
 
   const leafletClasses = Array.from(el.classList).filter((cls) => cls.startsWith('leaflet-'))
-  const classes = [...leafletClasses, ...getMarkerClasses(layerType, markerStyle)]
+  const classes = [...leafletClasses, ...getMarkerClasses(variant, markerStyle)]
   if (animate) classes.push('marker-switch')
 
   el.className = classes.join(' ')

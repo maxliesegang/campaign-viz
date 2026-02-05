@@ -1,9 +1,8 @@
 import { SUNFLOWER_PATH } from './sunflower'
+import type { MarkerVariant } from '../types/activity'
 
 const SPRITE_SIZE = 64 // Render at 64px for crisp scaling
 const VIEWBOX_SIZE = 512 // Original SVG viewBox size
-
-type SpriteVariant = 'recent' | 'cumulative'
 
 interface SpriteConfig {
   fill: string
@@ -11,7 +10,7 @@ interface SpriteConfig {
   strokeWidth: number
 }
 
-const SPRITE_CONFIGS: Record<SpriteVariant, SpriteConfig> = {
+const SPRITE_CONFIGS: Record<MarkerVariant, SpriteConfig> = {
   recent: {
     fill: '#e6fd53', // limette
     stroke: '#4f6a5f', // wald
@@ -25,9 +24,9 @@ const SPRITE_CONFIGS: Record<SpriteVariant, SpriteConfig> = {
 }
 
 // Cache for rendered sprites
-const spriteCache = new Map<SpriteVariant, string>()
+const spriteCache = new Map<MarkerVariant, string>()
 
-function renderSpriteToCanvas(variant: SpriteVariant): string {
+function renderSpriteToCanvas(variant: MarkerVariant): string {
   const config = SPRITE_CONFIGS[variant]
   const canvas = document.createElement('canvas')
   canvas.width = SPRITE_SIZE
@@ -57,7 +56,7 @@ function renderSpriteToCanvas(variant: SpriteVariant): string {
   return canvas.toDataURL('image/png')
 }
 
-export function getSunflowerSprite(variant: SpriteVariant): string {
+export function getSunflowerSprite(variant: MarkerVariant): string {
   let sprite = spriteCache.get(variant)
   if (!sprite) {
     sprite = renderSpriteToCanvas(variant)

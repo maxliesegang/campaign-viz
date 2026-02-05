@@ -78,10 +78,10 @@ body {
   border-radius: 14px;
   padding: 10px 14px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(100px, 1fr) auto auto;
   grid-template-areas: 'play slider filters actions';
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   z-index: var(--z-menu);
   backdrop-filter: blur(10px);
   box-shadow: 0 10px 30px rgba(31, 41, 51, 0.15);
@@ -92,8 +92,7 @@ body {
 .playback-group {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
+  gap: 8px;
   min-width: 0;
   grid-area: play;
 }
@@ -173,11 +172,11 @@ body {
 .filter-group {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
+  gap: 6px;
+  flex-wrap: wrap;
   grid-area: filters;
   justify-self: start;
-  min-width: 160px;
+  min-width: 0;
 }
 
 .filter-select {
@@ -185,11 +184,12 @@ body {
   background: rgba(120, 160, 140, 0.12);
   border: 1px solid rgba(79, 106, 95, 0.3);
   border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 12px;
+  padding: 6px 8px;
+  font-size: 11px;
   color: var(--text-dark);
   cursor: pointer;
-  min-width: 120px;
+  min-width: 0;
+  flex: 0 1 auto;
   transition:
     background 120ms ease,
     border-color 120ms ease;
@@ -286,16 +286,22 @@ body {
 @media (min-width: 1024px) {
   .bottom-menu {
     padding: 10px 18px;
-    gap: 14px;
+    gap: 12px;
     width: min(1100px, calc(100% - 32px));
   }
 
   .slider-group {
-    min-width: 280px;
+    min-width: 200px;
   }
 
   .filter-group {
-    min-width: 220px;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .filter-select {
+    padding: 8px 10px;
+    font-size: 12px;
   }
 
   :root {
@@ -742,4 +748,76 @@ input[type='range']::-moz-range-thumb {
 
 .overlay-gradient {
   background: linear-gradient(135deg, rgba(120, 160, 140, 0.9), rgba(79, 106, 95, 0.9));
+}
+
+/* Marker Cluster Styles */
+.marker-cluster {
+  background: var(--wald);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.marker-cluster .cluster-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.marker-cluster-small {
+  width: 30px;
+  height: 30px;
+}
+
+.marker-cluster-small .cluster-inner {
+  font-size: 11px;
+}
+
+.marker-cluster-medium {
+  width: 40px;
+  height: 40px;
+}
+
+.marker-cluster-medium .cluster-inner {
+  font-size: 13px;
+}
+
+.marker-cluster-large {
+  width: 50px;
+  height: 50px;
+}
+
+.marker-cluster-large .cluster-inner {
+  font-size: 15px;
+}
+
+/* Paint-dot cluster style - for "painting the country" effect */
+.marker-cluster-paint {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.paint-dot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--wald);
+  opacity: var(--dot-opacity, 0.6);
+  box-shadow: 0 0 4px rgba(79, 106, 95, 0.4);
+  transition: transform 0.12s ease;
+}
+
+.marker-cluster-paint:hover .paint-dot {
+  transform: scale(1.2);
+  opacity: calc(var(--dot-opacity, 0.6) + 0.15);
 }

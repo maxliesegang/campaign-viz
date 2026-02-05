@@ -1,9 +1,10 @@
 import { differenceInDays, format } from 'date-fns'
 import { de } from 'date-fns/locale'
 import { getDateRange } from '../data/activities'
-import { MAP_STYLES, PLAYBACK_SPEEDS } from '../config'
+import { MAP_STYLES, PLAYBACK_SPEEDS, UPDATE_INTERVAL_DAYS } from '../config'
+import { REGIONS, type RegionConfig } from '../regions'
 
-export function renderTemplate(): string {
+export function renderTemplate(regionConfig: RegionConfig): string {
   const { start, end } = getDateRange()
   const totalDays = differenceInDays(end, start)
 
@@ -34,6 +35,12 @@ export function renderTemplate(): string {
     <option value="HOUSE">Haustüren</option>
     <option value="POSTER">Plakate</option>
   `
+  const regionOptions = Object.values(REGIONS)
+    .map(
+      (region) =>
+        `<option value="${region.id}" ${region.id === regionConfig.id ? 'selected' : ''}>${region.name}</option>`,
+    )
+    .join('')
 
   return `
     <div id="main-container" class="h-screen bg-sand flex flex-col text-slate-900">
@@ -48,7 +55,7 @@ export function renderTemplate(): string {
         <!-- Fullscreen overlay -->
         <div id="final-overlay" class="hidden absolute inset-0 overlay-gradient flex items-center justify-center z-[1000]">
           <div class="text-center text-white">
-            <h2 class="text-4xl md:text-6xl font-bold mb-8">Wahlkampf 2026</h2>
+            <h2 class="text-4xl md:text-6xl font-bold mb-8">Wahlkampf ${regionConfig.name} 2026</h2>
             <div id="final-stats" class="grid grid-cols-2 gap-6 text-2xl md:text-4xl"></div>
           </div>
         </div>
@@ -79,11 +86,11 @@ export function renderTemplate(): string {
             type="range"
             id="timeline-slider"
             min="0"
-            max="${totalDays}"
-            value="0"
-            step="0.05"
-            class="timeline-slider"
-          />
+          max="${totalDays}"
+          value="0"
+          step="${UPDATE_INTERVAL_DAYS}"
+          class="timeline-slider"
+        />
           <div class="slider-labels">
             <span>${startLabel}</span>
             <span>${middleLabel}</span>
@@ -92,6 +99,9 @@ export function renderTemplate(): string {
         </div>
 
         <div class="filter-group">
+          <select id="region-select" class="filter-select" aria-label="Region">
+            ${regionOptions}
+          </select>
           <select id="activity-filter" class="filter-select" aria-label="Aktivitäten filtern">
             ${activityOptions}
           </select>

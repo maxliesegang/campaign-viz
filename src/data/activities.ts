@@ -1,8 +1,8 @@
 import { isBefore, isSameDay } from 'date-fns'
 import { seededRandom } from '../utils/random'
-import { blurCoordinates } from '../utils/privacyBlur'
 import { START_DATE, END_DATE, MS_PER_DAY } from '../config'
 import type { ActivityType, ActivityFilter } from '../types/activity'
+import { DEFAULT_REGION, type RegionId } from '../regions'
 
 export interface Activity {
   date: string
@@ -20,6 +20,13 @@ export interface ProcessedActivity extends Activity {
   revealFraction: number
 }
 
+// Import all region data at build time using Vite's glob import
+const regionModules: Record<RegionId, Record<string, unknown>> = {
+  karlsruhe: import.meta.glob('./activity-files/karlsruhe/*.json', { eager: true }),
+  bawu: import.meta.glob('./activity-files/bawu/*.json', { eager: true }),
+}
+
+// Sample neighborhoods for fallback data generation (Karlsruhe)
 const neighborhoods = [
   { lat: 49.0069, lng: 8.3937 },
   { lat: 49.0089, lng: 8.4137 },
@@ -116,23 +123,16 @@ function computeDateRange(activities: Activity[]): { start: Date; end: Date } {
   )
 }
 
-function processActivities(
-  activities: Activity[],
-  alreadyBlurred = false,
-  startDate: Date,
-): ProcessedActivity[] {
+function processActivities(activities: Activity[], startDate: Date): ProcessedActivity[] {
   return activities.map((activity, idx) => {
     const dateObj = new Date(activity.date)
     const dayIndex = Math.max(0, Math.round((dateObj.getTime() - startDate.getTime()) / MS_PER_DAY))
     const revealFraction = seededRandom(idx * 97 + activity.lat * 1000 + activity.lng * 1000)
-    const coords = alreadyBlurred
-      ? { lat: activity.lat, lng: activity.lng }
-      : blurCoordinates(activity.lat, activity.lng)
 
     return {
       ...activity,
-      blurredLat: coords.lat,
-      blurredLng: coords.lng,
+      blurredLat: activity.lat,
+      blurredLng: activity.lng,
       dateObj,
       dayIndex,
       revealFraction,
@@ -140,21 +140,56 @@ function processActivities(
   })
 }
 
-// Load JSON files from src/data/activity-files/*.json, fallback to generated sample data
-const importedModules = import.meta.glob('./activity-files/*.json', { eager: true })
-const importedActivities: Activity[] = Object.values(importedModules).flatMap((mod) => {
-  const data = (mod as { default?: Activity[] }).default
-  return Array.isArray(data) ? data : []
-})
+function loadActivitiesForRegion(regionId: RegionId): Activity[] {
+  const modules = regionModules[regionId] ?? {}
+  const importedActivities: Activity[] = Object.values(modules).flatMap((mod) => {
+    const data = (mod as { default?: Activity[] }).default
+    return Array.isArray(data) ? data : []
+  })
+  return importedActivities
+}
 
-const activities = importedActivities.length > 0 ? importedActivities : generateSampleActivities()
-const dateRange = computeDateRange(activities)
+// Current region state
+interface RegionState {
+  regionId: RegionId
+  dateRange: { start: Date; end: Date }
+  processedActivities: ProcessedActivity[]
+}
 
-// Skip coordinate blurring - imported data should be pre-processed, generated data is already randomized
-export const processedActivities = processActivities(activities, true, dateRange.start)
+let state: RegionState = {
+  regionId: DEFAULT_REGION,
+  dateRange: { start: new Date(START_DATE), end: new Date(END_DATE) },
+  processedActivities: [],
+}
+
+function initializeRegion(regionId: RegionId): void {
+  const imported = loadActivitiesForRegion(regionId)
+  const activities = imported.length > 0 ? imported : generateSampleActivities()
+  const dateRange = computeDateRange(activities)
+
+  state = {
+    regionId,
+    dateRange,
+    processedActivities: processActivities(activities, dateRange.start),
+  }
+}
+
+// Initialize with default region on module load
+initializeRegion(DEFAULT_REGION)
+
+// Public API
+export function switchRegion(regionId: RegionId): void {
+  if (regionId !== state.regionId) {
+    initializeRegion(regionId)
+  }
+}
+
+export function getProcessedActivities(): ProcessedActivity[] {
+  return state.processedActivities
+}
 
 export function getDateRange(): { start: Date; end: Date } {
-  return { start: new Date(dateRange.start), end: new Date(dateRange.end) }
+  return { start: new Date(state.dateRange.start), end: new Date(state.dateRange.end) }
 }
 
 export function isActivityVisible(activity: ProcessedActivity, dayOffset: number): boolean {
@@ -188,8 +223,8 @@ export function filterActivities(
 
 export function selectVisibleActivities(
   activities: ProcessedActivity[],
-  state: { currentDate: Date; dayOffset: number; activityFilter: ActivityFilter },
+  appState: { currentDate: Date; dayOffset: number; activityFilter: ActivityFilter },
 ): ProcessedActivity[] {
-  const visible = getVisibleActivitiesUpTo(activities, state.currentDate, state.dayOffset)
-  return filterActivities(visible, state.activityFilter)
+  const visible = getVisibleActivitiesUpTo(activities, appState.currentDate, appState.dayOffset)
+  return filterActivities(visible, appState.activityFilter)
 }
