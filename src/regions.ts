@@ -8,6 +8,7 @@ export interface RegionConfig {
   center: L.LatLngTuple
   initialZoom: number
   clusteringEnabled: boolean
+  highlightRecentMarkers: boolean
 }
 
 export const REGIONS: Record<RegionId, RegionConfig> = {
@@ -17,6 +18,7 @@ export const REGIONS: Record<RegionId, RegionConfig> = {
     center: [49.0069, 8.4037],
     initialZoom: 12,
     clusteringEnabled: false,
+    highlightRecentMarkers: true,
   },
   bawu: {
     id: 'bawu',
@@ -24,6 +26,7 @@ export const REGIONS: Record<RegionId, RegionConfig> = {
     center: [48.6, 9.1],
     initialZoom: 8,
     clusteringEnabled: true,
+    highlightRecentMarkers: false,
   },
 }
 

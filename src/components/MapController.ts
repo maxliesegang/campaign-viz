@@ -16,7 +16,7 @@ import { getSunflowerSprite, initSunflowerSprites } from '../assets/sunflowerSpr
 import { getState } from '../state'
 import type { ProcessedActivity } from '../data/activities'
 import { selectVisibleActivities } from '../data/activities'
-import type { RegionConfig } from '../regions'
+import { getRegionConfig, type RegionConfig } from '../regions'
 import type { MarkerVariant } from '../types/activity'
 import { createClusterGroup } from './MarkerCluster'
 import { hexToRgba } from '../utils/color'
@@ -35,6 +35,7 @@ const ZOOM_SCALE_BASE = 1.3
 const ZOOM_SCALE_MIN = 0.6
 const ZOOM_SCALE_MAX = 2.6
 const ZOOM_DEBOUNCE_MS = 50
+const BASE_MARKER_SIZE = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE)
 
 interface MapContext {
   map: L.Map
@@ -184,12 +185,19 @@ export function updateMapVisualization(activities: ProcessedActivity[]): Process
 }
 
 function buildMarkerDescriptors(activities: ProcessedActivity[]): MarkerDescriptor[] {
-  const recentKeys = computeRecentActivityKeys(activities)
+  const shouldHighlightRecent = shouldHighlightRecentMarkers()
+  const recentKeys = shouldHighlightRecent ? computeRecentActivityKeys(activities) : null
+
   return activities.map((activity) => {
     const key = createActivityKey(activity)
-    const variant: MarkerVariant = recentKeys.has(key) ? 'recent' : 'cumulative'
+    const variant: MarkerVariant = recentKeys?.has(key) ? 'recent' : 'cumulative'
     return { activity, key, variant }
   })
+}
+
+function shouldHighlightRecentMarkers(): boolean {
+  const { currentRegion } = getState()
+  return getRegionConfig(currentRegion).highlightRecentMarkers
 }
 
 function syncLayerGroup(
@@ -346,26 +354,32 @@ function getRevealTimestamp(activity: ProcessedActivity): number {
 }
 
 function createSunflowerIcon(variant: MarkerVariant): L.DivIcon {
-  const size = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE)
+  const size = BASE_MARKER_SIZE
   const sprite = getSunflowerSprite(variant)
 
   return L.divIcon({
     className: buildMarkerClass(variant, 'sunflower'),
-    html: `<img src="${sprite}" class="sunflower-sprite" alt="" draggable="false" />`,
+    html: wrapMarkerVisual(
+      `<img src="${sprite}" class="marker-visual sunflower-sprite" data-variant="${variant}" alt="" draggable="false" />`,
+    ),
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
 }
 
 function createDotIcon(variant: MarkerVariant): L.DivIcon {
-  const size = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE)
+  const size = BASE_MARKER_SIZE
 
   return L.divIcon({
     className: buildMarkerClass(variant, 'simple'),
-    html: '<div class="dot-shape" aria-hidden="true"></div>',
+    html: wrapMarkerVisual('<div class="marker-visual dot-shape" aria-hidden="true"></div>'),
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })
+}
+
+function wrapMarkerVisual(content: string): string {
+  return `<div class="marker-scale">${content}</div>`
 }
 
 function applyMarkerStyle(
@@ -376,25 +390,33 @@ function applyMarkerStyle(
   const el = marker.getElement()
   if (!el) return
 
-  const colors = MARKER_COLORS[variant]
   const zoomScale = computeZoomScale()
-  const sizePx = Math.max(MARKER_BASE_RADIUS * 2, MIN_MARKER_SIZE) * zoomScale
+  const sizePx = BASE_MARKER_SIZE * zoomScale
 
   if (markerStyle === 'sunflower') {
-    el.style.setProperty('--sunflower-size', `${sizePx}px`)
-    const img = el.querySelector<HTMLImageElement>('.sunflower-sprite')
-    if (img) {
-      const sprite = getSunflowerSprite(variant)
-      if (img.src !== sprite) {
-        img.src = sprite
-      }
-    }
+    applySunflowerMarkerStyle(el, sizePx, variant)
   } else {
-    el.style.setProperty('--dot-size', `${sizePx}px`)
-    el.style.setProperty('--dot-fill', hexToRgba(colors.fill, colors.fillOpacity))
-    el.style.setProperty('--dot-stroke', hexToRgba(colors.stroke, colors.strokeOpacity))
-    el.style.setProperty('--dot-border-width', `${colors.strokeWidth}px`)
+    applyDotMarkerStyle(el, sizePx, variant)
   }
+}
+
+function applySunflowerMarkerStyle(el: HTMLElement, sizePx: number, variant: MarkerVariant): void {
+  el.style.setProperty('--sunflower-size', `${sizePx}px`)
+
+  const img = el.querySelector<HTMLImageElement>('.sunflower-sprite')
+  if (!img || img.dataset.variant === variant) return
+
+  img.src = getSunflowerSprite(variant)
+  img.dataset.variant = variant
+}
+
+function applyDotMarkerStyle(el: HTMLElement, sizePx: number, variant: MarkerVariant): void {
+  const colors = MARKER_COLORS[variant]
+
+  el.style.setProperty('--dot-size', `${sizePx}px`)
+  el.style.setProperty('--dot-fill', hexToRgba(colors.fill, colors.fillOpacity))
+  el.style.setProperty('--dot-stroke', hexToRgba(colors.stroke, colors.strokeOpacity))
+  el.style.setProperty('--dot-border-width', `${colors.strokeWidth}px`)
 }
 
 function computeZoomScale(): number {
